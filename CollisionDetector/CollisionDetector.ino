@@ -5,26 +5,31 @@
 
 
 // Echo Pin
-#define ECHO_PIN 4
+static const int ECHO_PIN = 4;
 
 // Trigger Pin
-#define TRIGGER_PIN 5
+static const int TRIGGER_PIN = 5;
 
-#define BUZZER_PIN 3
-#define LED_PIN 13
+static const int BUZZER_PIN = 3;
+static const int LED_PIN = 13;
 
-#define DISTANCE_TO_BEEP 100
+static const int DISTANCE_TO_BEEP = 200;
+
  
 
 
+DeclareTaskLoop(BeepManager);
+DeclareTaskLoop(Beeper);
+DeclareTaskLoop(DistanceMeter);
+DeclareTaskLoop(SerialPrinter);
 
- DeclareTaskLoop(Blinker);
- DeclareTaskLoop(DistanceMeter);
- DeclareTaskLoop(SerialPrinter);
 
 
-double duration = 0.0;
-double distance = 0.0;
+int distanceOnBeep = 0;
+
+int distance = 0;
+
+
 
 void setup() { 
     pinMode(ECHO_PIN, INPUT);
@@ -34,13 +39,13 @@ void setup() {
     Serial.begin(19200);
 
 
-    CreateTaskLoop(Blinker, LOW_PRIORITY);
+    CreateTaskLoop(BeepManager, LOW_PRIORITY);
     CreateTaskLoop(DistanceMeter, LOW_PRIORITY);
     CreateTaskLoop(SerialPrinter, LOW_PRIORITY);
+
     
     Serial.println("Start");
 
-    // tone(3, 880);
 
     // DDRD  |=  B00001000;
 
@@ -55,50 +60,145 @@ void setup() {
     // //タイマー割り込み開始
     // //TIMSK2 |= _BV(TOIE2);
 
-    // tone(3, 4000);
 }
 
 void loop(){
+
+    // digitalWrite(TRIGGER_PIN, LOW); 
+    // delayMicroseconds(2); 
+    // digitalWrite(TRIGGER_PIN, HIGH ); //超音波を出力
+    // delayMicroseconds( 10 ); //
+    // digitalWrite( TRIGGER_PIN, LOW );
+    // duration = pulseIn( ECHO_PIN, HIGH, 60000 ); //センサからの入力
+    // if (duration > 0) {
+    //     // duration = duration / 2; //往復距離を半分にする
+    //     // distance = duration * 0.034; // 音速を340m/sに設定; duration * 340 * 100 / 1000000
+        
+    //     distance = duration / 58;
+
+    //     if(distance < DISTANCE_TO_BEEP){
+    //         tone(BUZZER_PIN, 4000);
+    //     }
+    //     else{
+    //         noTone(BUZZER_PIN);
+    //     }
+            
+    //     Serial.print("Distance:");
+    //     Serial.print(distance);
+    //     Serial.println(" cm");
+    // }
+    // //delay(500);
+
+    // // Serial.println(duration);
     
 }
 
+
+
 TaskLoop(SerialPrinter){
+
     Serial.print("Distance:");
     Serial.print(distance);
     Serial.println(" cm");
-    TaskDelay(500);
+    DelayWithBlocked(50);
 }
+
+
 
 TaskLoop(DistanceMeter) {
-    digitalWrite(TRIGGER_PIN, LOW); 
-    delayMicroseconds(2); 
-    digitalWrite(TRIGGER_PIN, HIGH ); //超音波を出力
-    delayMicroseconds( 10 ); //
-    digitalWrite( TRIGGER_PIN, LOW );
-    duration = pulseIn( ECHO_PIN, HIGH ); //センサからの入力
-    if (duration > 0) {
-        duration = duration/2; //往復距離を半分にする
-        distance = duration*340*100/1000000; // 音速を340m/sに設定
-        
 
-        if(distance < DISTANCE_TO_BEEP){
-            tone(BUZZER_PIN, 4000);
+    unsigned long duration = 0;
+
+    EnterCritical();
+    {
+        
+        // 超音波を出力
+        digitalWrite(TRIGGER_PIN, LOW); 
+        delayMicroseconds(2);
+        digitalWrite(TRIGGER_PIN, HIGH );
+        delayMicroseconds( 10 );
+        digitalWrite( TRIGGER_PIN, LOW );
+
+        // センサからの入力
+        duration = pulseIn( ECHO_PIN, HIGH, 60000);
+        if(duration > 0){
+            // (duration(us) / 2 / 1000000)(s) * 340
+            distance = duration / 58;
         }
         else{
-            noTone(BUZZER_PIN);
+            distance = -1;
         }
+
     }
+    ExitCritical();
+    // Yield();
+    DelayWithBlocked(50);
+
+
+    // if(distance < DISTANCE_TO_BEEP){
+    //     tone(BUZZER_PIN, 4000);
+    // }
+    // else{
+    //     noTone(BUZZER_PIN);
+    // }
+
+
     //delay(500);
+
+    // Serial.println(duration);
+    
+}
+
+int CalculateBeeperDurationTime(int distance){
+    if(distance < 0 && distance > DISTANCE_TO_BEEP){
+        return 1000;
+    }
+
+    double rate = 1.0 - ((DISTANCE_TO_BEEP - distance) / (double)DISTANCE_TO_BEEP);
+    rate *= rate;
+
+    int duration = (int)(rate * 1000);
+    return duration < 50 ? 50 : duration;
 }
 
 
+TaskLoop(BeepManager){
+    
+    if((distance > 0) && (distance < DISTANCE_TO_BEEP)){
+
+        if(Beeper == NULL){
+            CreateTaskLoop(Beeper, LOW_PRIORITY);
+            // Serial.println('A');
+        }
+    }
 
 
-TaskLoop(Blinker){
+    else{
+        if(Beeper != NULL){
+            DeleteTask(Beeper);
+            Beeper = NULL;
 
-    TaskDelay(1000);
+                    
+            noTone(BUZZER_PIN);
+            digitalWrite(LED_PIN, LOW);
+        }
+    }
+
+    DelayWithBlocked(10);
+}
+
+TaskLoop(Beeper){
+
+    int duration = CalculateBeeperDurationTime(distance);
+
+    DelayWithBlocked(duration);
+
     digitalWrite(LED_PIN, HIGH);
-    TaskDelay(1000);
+    tone(BUZZER_PIN, 4000);
+
+    DelayWithBlocked(duration / 1);
+    
+    noTone(BUZZER_PIN);
     digitalWrite(LED_PIN, LOW);
 }
 
