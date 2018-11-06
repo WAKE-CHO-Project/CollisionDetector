@@ -5,16 +5,18 @@
 
 
 // Echo Pin
-static const int ECHO_PIN = 4;
+static const int ECHO_PIN = 12;
 
 // Trigger Pin
-static const int TRIGGER_PIN = 5;
+static const int TRIGGER_PIN = 11;
 
-static const int BUZZER_PIN = 3;
+static const int BUZZER_PIN = 18;
 static const int LED_PIN = 13;
 
 static const int DISTANCE_TO_BEEP = 200;
 
+
+static const int REBEEP_DIFF_DISTANCE = 50;
  
 
 
@@ -29,7 +31,7 @@ int distanceOnBeep = 0;
 
 int distance = 0;
 
-
+SemaphoreHandle distanceOnBeepSem;
 
 void setup() { 
     pinMode(ECHO_PIN, INPUT);
@@ -43,7 +45,9 @@ void setup() {
     CreateTaskLoop(DistanceMeter, LOW_PRIORITY);
     CreateTaskLoop(SerialPrinter, LOW_PRIORITY);
 
-    
+    CreateBinarySemaphore(distanceOnBeepSem);
+
+
     Serial.println("Start");
 
 
@@ -170,6 +174,25 @@ TaskLoop(BeepManager){
             CreateTaskLoop(Beeper, LOW_PRIORITY);
             // Serial.println('A');
         }
+        else {
+
+
+            if (Acquire(distanceOnBeepSem, 1000)){
+
+                if (distanceOnBeep - distance > REBEEP_DIFF_DISTANCE){
+                    
+                    distanceOnBeep = distance;
+                    DeleteTask(Beeper);
+                    
+                    CreateTaskLoop(Beeper, LOW_PRIORITY);
+                }
+
+
+                Release(distanceOnBeepSem);
+                Yield();
+            }
+
+        }
     }
 
 
@@ -190,6 +213,13 @@ TaskLoop(BeepManager){
 TaskLoop(Beeper){
 
     int duration = CalculateBeeperDurationTime(distance);
+
+    if (Acquire(distanceOnBeepSem, 1000)){
+        distanceOnBeep = distance;
+
+        Release(distanceOnBeepSem);
+        Yield();
+    }
 
     DelayWithBlocked(duration);
 
