@@ -13,7 +13,7 @@ static const int TRIGGER_PIN = 11;
 static const int BUZZER_PIN = 18;
 static const int LED_PIN = 13;
 
-static const int DISTANCE_TO_BEEP = 200;
+static const int DISTANCE_TO_BEEP = 400;
 
 
 static const int REBEEP_DIFF_DISTANCE = 50;
